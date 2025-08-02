@@ -384,11 +384,7 @@ def main():
             f"[Data Info] Reading dataset from: \n{conf.train_file}\n{conf.dev_file}\n{conf.test_file}"
         )
         train_dataset = TransformersNERDataset(
-            conf.train_file,
-            tokenizer,
-            number=conf.train_num,
-            is_train=True,
-            max_length=512,
+            conf.train_file, tokenizer, number=conf.train_num, is_train=True
         )
         conf.label2idx = train_dataset.label2idx
         conf.idx2labels = train_dataset.idx2labels
@@ -399,7 +395,6 @@ def main():
             number=conf.dev_num,
             label2idx=train_dataset.label2idx,
             is_train=False,
-            max_length=512,
         )
         test_dataset = TransformersNERDataset(
             conf.test_file,
@@ -407,7 +402,6 @@ def main():
             number=conf.test_num,
             label2idx=train_dataset.label2idx,
             is_train=False,
-            max_length=512,
         )
         num_workers = 8
         conf.label_size = len(train_dataset.label2idx)
