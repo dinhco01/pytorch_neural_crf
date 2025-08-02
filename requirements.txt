@@ -1,0 +1,9 @@
+accelerate==1.9.0
+allennlp==2.10.1
+bert_serving==0.0.1
+datasets==4.0.0
+numpy==2.3.2
+termcolor==3.1.0
+torch==2.7.1
+tqdm==4.67.1
+transformers==4.54.1
