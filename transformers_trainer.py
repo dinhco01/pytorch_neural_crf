@@ -6,7 +6,6 @@ import torch
 from typing import List
 import os
 from src.config.utils import write_results
-from torch.optim import AdamW
 from src.config.transformers_util import get_huggingface_optimizer_and_scheduler
 from src.config import get_metric
 import pickle
@@ -171,10 +170,10 @@ def train_model(
         f"[Model Info]: Working with transformers package from huggingface with {config.embedder_type}"
     )
     logger.info(
-        f"[Optimizer Info]: You should be aware that you are using the optimizer from huggingface."
+        "[Optimizer Info]: You should be aware that you are using the optimizer from huggingface."
     )
     logger.info(
-        f"[Optimizer Info]: Change the optimier in transformers_util.py if you want to make some modifications."
+        "[Optimizer Info]: Change the optimier in transformers_util.py if you want to make some modifications."
     )
     model = TransformersCRF(config)
     optimizer, scheduler = get_huggingface_optimizer_and_scheduler(
@@ -185,7 +184,7 @@ def train_model(
         eps=1e-8,
         warmup_step=0,
     )
-    logger.info(f"[Optimizer Info] Modify the optimizer info as you need.")
+    logger.info("[Optimizer Info] Modify the optimizer info as you need.")
     logger.info(optimizer)
 
     model.to(config.device)
@@ -377,7 +376,9 @@ def main():
             f"[Data Info] Tokenizing the instances using '{conf.embedder_type}' tokenizer"
         )
         tokenizer = AutoTokenizer.from_pretrained(
-            conf.embedder_type, add_prefix_space=True, use_fast=True
+            conf.embedder_type,
+            add_prefix_space=True,
+            use_fast=True,
         )
         logger.info(
             f"[Data Info] Reading dataset from: \n{conf.train_file}\n{conf.dev_file}\n{conf.test_file}"

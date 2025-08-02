@@ -5,11 +5,8 @@
 from tqdm import tqdm
 from typing import List, Dict
 from torch.utils.data import Dataset
-from torch.utils.data._utils.collate import default_collate
 from transformers import PreTrainedTokenizerFast
-import collections
-import numpy as np
-from src.data.data_utils import convert_iobes, build_label_idx, check_all_labels_in_dict
+from src.data.data_utils import convert_iobes, build_label_idx
 
 from src.data import Instance
 import logging
@@ -20,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 def convert_instances_to_feature_tensors(
     instances: List[Instance],
-    tokenizer: PreTrainedTokenizerFast,
+    tokenizer,  # Thay đổi type hint để hỗ trợ cả fast và slow tokenizer
     label2idx: Dict[str, int],
 ) -> List[Dict]:
     features = []
@@ -34,23 +31,54 @@ def convert_instances_to_feature_tensors(
     logger.info(
         "[Data Info] We are not limiting the max length in tokenizer. You should be aware of that"
     )
+
+    # Kiểm tra xem tokenizer có phải là fast tokenizer không
+    is_fast_tokenizer = isinstance(tokenizer, PreTrainedTokenizerFast)
+
     for idx, inst in enumerate(instances):
         words = inst.ori_words
         orig_to_tok_index = []
-        res = tokenizer.encode_plus(words, is_split_into_words=True)
-        subword_idx2word_idx = res.word_ids(batch_index=0)
-        prev_word_idx = -1
-        for i, mapped_word_idx in enumerate(subword_idx2word_idx):
-            """
-            Note: by default, we use the first wordpiece/subword token to represent the word
-            If you want to do something else (e.g., use last wordpiece to represent), modify them here.
-            """
-            if mapped_word_idx is None:  ## cls and sep token
-                continue
-            if mapped_word_idx != prev_word_idx:
-                ## because we take the first subword to represent the whold word
-                orig_to_tok_index.append(i)
-                prev_word_idx = mapped_word_idx
+
+        if is_fast_tokenizer:
+            # Sử dụng fast tokenizer (code gốc)
+            res = tokenizer.encode_plus(words, is_split_into_words=True)
+            subword_idx2word_idx = res.word_ids(batch_index=0)
+            prev_word_idx = -1
+            for i, mapped_word_idx in enumerate(subword_idx2word_idx):
+                """
+                Note: by default, we use the first wordpiece/subword token to represent the word
+                If you want to do something else (e.g., use last wordpiece to represent), modify them here.
+                """
+                if mapped_word_idx is None:  ## cls and sep token
+                    continue
+                if mapped_word_idx != prev_word_idx:
+                    ## because we take the first subword to represent the whole word
+                    orig_to_tok_index.append(i)
+                    prev_word_idx = mapped_word_idx
+        else:
+            # Sử dụng slow tokenizer - cần xử lý thủ công
+            all_tokens = []
+            for word_idx, word in enumerate(words):
+                # Tokenize từng từ riêng lẻ
+                word_tokens = tokenizer.tokenize(word)
+                if len(word_tokens) == 0:
+                    # Nếu từ không thể tokenize, thêm [UNK]
+                    word_tokens = [tokenizer.unk_token]
+
+                # Lưu index của token đầu tiên của từ này
+                orig_to_tok_index.append(len(all_tokens) + 1)  # +1 để tính [CLS] token
+                all_tokens.extend(word_tokens)
+
+            # Tạo input_ids với [CLS] và [SEP]
+            input_ids = [tokenizer.cls_token_id]
+            input_ids.extend(tokenizer.convert_tokens_to_ids(all_tokens))
+            input_ids.append(tokenizer.sep_token_id)
+
+            # Tạo attention_mask
+            attention_mask = [1] * len(input_ids)
+
+            res = {"input_ids": input_ids, "attention_mask": attention_mask}
+
         assert len(orig_to_tok_index) == len(words)
         labels = inst.labels
         label_ids = (
@@ -75,7 +103,7 @@ class TransformersNERDataset(Dataset):
     def __init__(
         self,
         file: str,
-        tokenizer: PreTrainedTokenizerFast,
+        tokenizer,  # Thay đổi type hint để hỗ trợ cả fast và slow tokenizer
         is_train: bool,
         sents: List[List[str]] = None,
         label2idx: Dict[str, int] = None,
@@ -95,11 +123,11 @@ class TransformersNERDataset(Dataset):
             # assert label2idx is None
             if label2idx is not None:
                 logger.warning(
-                    f"YOU ARE USING EXTERNAL label2idx, WHICH IS NOT BUILT FROM TRAINING SET."
+                    "YOU ARE USING EXTERNAL label2idx, WHICH IS NOT BUILT FROM TRAINING SET."
                 )
                 self.label2idx = label2idx
             else:
-                logger.info(f"[Data Info] Using the training set to build label index")
+                logger.info("[Data Info] Using the training set to build label index")
                 ## build label to index mapping. e.g., B-PER -> 0, I-PER -> 1
                 idx2labels, label2idx = build_label_idx(insts)
                 self.idx2labels = idx2labels
@@ -129,7 +157,7 @@ class TransformersNERDataset(Dataset):
             f"[Data Info] Reading file: {file}, labels will be converted to IOBES encoding"
         )
         logger.info(
-            f"[Data Info] Modify src/data/transformers_dataset.read_txt function if you have other requirements"
+            "[Data Info] Modify src/data/transformers_dataset.read_txt function if you have other requirements"
         )
         insts = []
         with open(file, "r", encoding="utf-8") as f:
@@ -198,13 +226,12 @@ class TransformersNERDataset(Dataset):
 
 ## testing code to test the dataset
 if __name__ == "__main__":
-    from transformers import RobertaTokenizerFast
+    from transformers import AutoTokenizer
 
-    tokenizer = RobertaTokenizerFast.from_pretrained(
-        "roberta-base", add_prefix_space=True
-    )
+    tokenizer = AutoTokenizer.from_pretrained("vinai/phobert-base")
+
     dataset = TransformersNERDataset(
-        file="data/conll2003_sample/train.txt", tokenizer=tokenizer, is_train=True
+        file="data/vietnam-history-data-ner/dev.txt", tokenizer=tokenizer, is_train=True
     )
     from torch.utils.data import DataLoader
 
@@ -219,4 +246,4 @@ if __name__ == "__main__":
     for batch in train_dataloader:
         # print(batch.input_ids.size())
         print(batch.input_ids)
-        pass
+        break

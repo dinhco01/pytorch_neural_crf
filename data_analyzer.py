@@ -380,7 +380,7 @@ class DataAnalyzer:
     def visualize_ner_characteristics(self):
         """Create NER-specific visualizations"""
         fig, axes = plt.subplots(2, 3, figsize=(20, 12))
-        fig.suptitle("Phân Tích Đặc Trưng Dữ Liệu NER", fontsize=16, fontweight="bold")
+        fig.suptitle("Phân Tích Đặc Trưng Dữ Liệu", fontsize=16, fontweight="bold")
 
         # 1. BIO tag distribution
         bio_tags = [token["bio_tag"] for token in self.tokens]

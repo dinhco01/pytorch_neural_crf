@@ -1,10 +1,10 @@
 import torch
-from typing import List, Tuple, Dict, Any
+from typing import List, Tuple
 import pickle
 import torch.optim as optim
 
 import torch.nn as nn
-from transformers import AdamW
+from torch.optim import AdamW
 
 from src.config import Config
 from termcolor import colored

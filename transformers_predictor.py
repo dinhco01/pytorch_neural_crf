@@ -3,9 +3,9 @@ import pickle
 from src.model import TransformersCRF
 import torch
 from termcolor import colored
-from src.config import context_models
 from src.data import TransformersNERDataset
-from typing import List, Union, Tuple
+from typing import List
+from transformers import AutoTokenizer
 import tarfile
 from torch.utils.data import DataLoader
 from tqdm import tqdm
@@ -47,9 +47,7 @@ class TransformersNERPredictor:
                 "blue",
             )
         )
-        self.tokenizer = context_models[self.conf.embedder_type][
-            "tokenizer"
-        ].from_pretrained(self.conf.embedder_type)
+        self.tokenizer = AutoTokenizer.from_pretrained(self.conf.embedder_type)
 
     def predict(self, sents: List[List[str]], batch_size=-1):
         batch_size = len(sents) if batch_size == -1 else batch_size
@@ -76,21 +74,41 @@ class TransformersNERPredictor:
             one_batch_insts = dataset.insts[
                 batch_id * batch_size : (batch_id + 1) * batch_size
             ]
-            batch_max_scores, batch_max_ids = self.model.decode(
-                words=batch.input_ids.to(self.conf.device),
+            batch_max_scores, batch_max_ids = self.model(
+                subword_input_ids=batch.input_ids.to(self.conf.device),
                 word_seq_lens=batch.word_seq_len.to(self.conf.device),
                 orig_to_tok_index=batch.orig_to_tok_index.to(self.conf.device),
-                input_mask=batch.attention_mask.to(self.conf.device),
+                attention_mask=batch.attention_mask.to(self.conf.device),
+                is_train=False,
             )
 
             for idx in range(len(batch_max_ids)):
                 length = batch.word_seq_len[idx]
                 prediction = batch_max_ids[idx][:length].tolist()
                 prediction = prediction[::-1]
-                prediction = [self.conf.idx2labels[l] for l in prediction]
+                prediction = [self.conf.idx2labels[p] for p in prediction]
                 one_batch_insts[idx].prediction = prediction
                 all_predictions.append(prediction)
         return all_predictions
+
+    def predict_and_display(self, sents: List[List[str]], batch_size=-1):
+        predictions = self.predict(sents, batch_size)
+
+        for i, (sent, pred) in enumerate(zip(sents, predictions)):
+            print(f"Sentence {i + 1}: {sent}")
+            print("-" * 75)
+
+            for j, (word, label) in enumerate(zip(sent, pred)):
+                if label.startswith("B-"):
+                    label_prefix = "[BEGIN]"
+                elif label.startswith("I-"):
+                    label_prefix = "[INSIDE]"
+                else:
+                    label_prefix = "[OTHER]"
+
+                print(f"  {j + 1:2d}. {word:20} -> {label_prefix} {label}")
+
+        return predictions
 
 
 if __name__ == "__main__":
