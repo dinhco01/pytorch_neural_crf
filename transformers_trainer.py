@@ -305,7 +305,7 @@ def evaluate_model(
     data_loader: DataLoader,
     name: str,
     insts: List,
-    print_each_type_metric: bool = False,
+    print_each_type_metric: bool = True,
 ):
     ## evaluation
     p_dict, total_predict_dict, total_entity_dict = Counter(), Counter(), Counter()
@@ -407,7 +407,7 @@ def main():
             label2idx=train_dataset.label2idx,
             is_train=False,
         )
-        num_workers = 8
+        num_workers = 0
         conf.label_size = len(train_dataset.label2idx)
         train_dataloader = DataLoader(
             train_dataset,
@@ -460,7 +460,7 @@ def main():
             test_dataset,
             batch_size=opt.batch_size,
             shuffle=False,
-            num_workers=1,
+            num_workers=0,
             collate_fn=test_dataset.collate_fn,
         )
         model = TransformersCRF(saved_config)

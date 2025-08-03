@@ -95,20 +95,171 @@ class TransformersNERPredictor:
         predictions = self.predict(sents, batch_size)
 
         for i, (sent, pred) in enumerate(zip(sents, predictions)):
-            print(f"Sentence {i + 1}: {sent}")
+            # Join words to show original sentence
+            sentence_text = " ".join(sent)
+            print(f"Sentence {i + 1}: {sentence_text}")
             print("-" * 75)
+
+            # Ensure we have matching lengths
+            if len(sent) != len(pred):
+                print(
+                    f"Warning: Mismatch between words ({len(sent)}) and predictions ({len(pred)})"
+                )
+                min_len = min(len(sent), len(pred))
+                sent = sent[:min_len]
+                pred = pred[:min_len]
 
             for j, (word, label) in enumerate(zip(sent, pred)):
                 if label.startswith("B-"):
                     label_prefix = "[BEGIN]"
+                    entity_type = label[2:]  # Remove "B-" prefix
                 elif label.startswith("I-"):
                     label_prefix = "[INSIDE]"
+                    entity_type = label[2:]  # Remove "I-" prefix
+                elif label.startswith("E-"):
+                    label_prefix = "[END]"
+                    entity_type = label[2:]  # Remove "E-" prefix
                 else:
                     label_prefix = "[OTHER]"
+                    entity_type = ""
 
-                print(f"  {j + 1:2d}. {word:20} -> {label_prefix} {label}")
+                # Format output
+                if entity_type:
+                    display_label = f"{label_prefix} {entity_type}"
+                else:
+                    display_label = f"{label_prefix} {label}"
+
+                print(f"  {j + 1:2d}. {word:20} -> {display_label}")
 
         return predictions
+
+    def predict_and_display_with_entities(self, sents: List[List[str]], batch_size=-1):
+        predictions = self.predict(sents, batch_size)
+        all_entities = []
+
+        for i, (sent, pred) in enumerate(zip(sents, predictions)):
+            # Join words to show original sentence
+            sentence_text = " ".join(sent)
+            print(f"Sentence {i + 1}: {sentence_text}")
+            print("-" * 75)
+
+            # Ensure matching lengths
+            if len(sent) != len(pred):
+                print(
+                    f"Warning: Mismatch between words ({len(sent)}) and predictions ({len(pred)})"
+                )
+                min_len = min(len(sent), len(pred))
+                sent = sent[:min_len]
+                pred = pred[:min_len]
+
+            # Display word-by-word predictions
+            for j, (word, label) in enumerate(zip(sent, pred)):
+                if label.startswith("B-"):
+                    label_prefix = "[BEGIN]"
+                    entity_type = label[2:]
+                elif label.startswith("I-"):
+                    label_prefix = "[INSIDE]"
+                    entity_type = label[2:]
+                elif label.startswith("E-"):
+                    label_prefix = "[END]"
+                    entity_type = label[2:]
+                else:
+                    label_prefix = "[OTHER]"
+                    entity_type = ""
+
+                if entity_type:
+                    display_label = f"{label_prefix} {entity_type}"
+                else:
+                    display_label = f"{label_prefix} {label}"
+
+                print(f"  {j + 1:2d}. {word:20} -> {display_label}")
+
+            # Extract and display entities
+            entities = self._extract_entities(sent, pred)
+            all_entities.append(entities)
+
+            if entities:
+                print("\nExtracted Entities:")
+                print("-" * 40)
+                for entity_type, entity_list in entities.items():
+                    for entity_text, start_idx, end_idx in entity_list:
+                        print(
+                            f"  {entity_type}: '{entity_text}' (position {start_idx}-{end_idx})"
+                        )
+            else:
+                print("\nNo entities found.")
+
+            print()  # Add blank line between sentences
+
+        return {"predictions": predictions, "entities": all_entities}
+
+    def _extract_entities(self, words: List[str], labels: List[str]) -> dict:
+        """
+        Extract entities from word-label pairs
+
+        Args:
+            words: List of words
+            labels: List of corresponding labels
+
+        Returns:
+            dict: Dictionary mapping entity types to list of (text, start_idx, end_idx) tuples
+        """
+        entities = {}
+        current_entity = None
+        current_words = []
+        start_idx = -1
+
+        for i, (word, label) in enumerate(zip(words, labels)):
+            if label.startswith("B-"):
+                # Save previous entity if exists
+                if current_entity and current_words:
+                    entity_text = " ".join(current_words)
+                    if current_entity not in entities:
+                        entities[current_entity] = []
+                    entities[current_entity].append((entity_text, start_idx, i - 1))
+
+                # Start new entity
+                current_entity = label[2:]
+                current_words = [word]
+                start_idx = i
+
+            elif label.startswith("I-") and current_entity == label[2:]:
+                # Continue current entity
+                current_words.append(word)
+
+            elif label.startswith("E-") and current_entity == label[2:]:
+                # End current entity
+                current_words.append(word)
+                entity_text = " ".join(current_words)
+                if current_entity not in entities:
+                    entities[current_entity] = []
+                entities[current_entity].append((entity_text, start_idx, i))
+
+                # Reset
+                current_entity = None
+                current_words = []
+                start_idx = -1
+
+            else:
+                # Save previous entity if exists and reset
+                if current_entity and current_words:
+                    entity_text = " ".join(current_words)
+                    if current_entity not in entities:
+                        entities[current_entity] = []
+                    entities[current_entity].append((entity_text, start_idx, i - 1))
+
+                current_entity = None
+                current_words = []
+                start_idx = -1
+
+        # Handle entity that extends to end of sentence
+        if current_entity and current_words:
+            entity_text = " ".join(current_words)
+            if current_entity not in entities:
+                entities[current_entity] = []
+            entities[current_entity].append((entity_text, start_idx, len(words) - 1))
+
+        return entities
 
 
 if __name__ == "__main__":

@@ -7,11 +7,6 @@ from src.config import ContextEmb
 from typing import List, Union, Dict
 import tarfile
 
-try:
-    from allennlp.commands.elmo import ElmoEmbedder
-except ImportError as e:
-    pass
-
 from preprocess.get_elmo_vec import load_elmo, parse_sentence
 from src.data import Instance
 from src.data.data_utils import UNK
@@ -28,7 +23,7 @@ NOTE: this is only used by glove/elmo
     sentence = "This is a sentence"
     # Or you can make a list of sentence:
     # sentence = ["This is a sentence", "This is the second sentence"]
-    
+
     model_path = "english_model.tar.gz"
     predictor = NERPredictor("model_files/english_model.tar.gz")
     res = predictor.predict(sentence)
@@ -91,7 +86,7 @@ class NERPredictor:
             length = batch.word_seq_len[idx]
             prediction = batch_max_ids[idx][:length].tolist()
             prediction = prediction[::-1]  ## reverse the Viterbi sequence
-            prediction = [self.conf.idx2labels[l] for l in prediction]
+            prediction = [self.conf.idx2labels[p] for p in prediction]
             predictions.append(prediction)
         return predictions
 
@@ -100,9 +95,13 @@ class NERPredictor:
         return [Instance(words=words, ori_words=words)]
 
     def sents_to_insts(self, sentences: List[str]) -> List[Instance]:
+        import nltk
+
+        nltk.download("punkt_tab")
+
         insts = []
         for sentence in sentences:
-            words = sentence.split()
+            words = nltk.word_tokenize(sentence)
             insts.append(Instance(words=words, ori_words=words))
         return insts
 
@@ -179,9 +178,9 @@ class NERPredictor:
         )
         return results
 
-    def predict(self, sentences: Union[str, List[str]]):
-        sents = [sentences] if isinstance(sentences, str) else sentences
-        insts = self.sents_to_insts(sents)
+    def predict(self, sents: Union[str, List[str]]):
+        sentences = [sents] if isinstance(sents, str) else sents
+        insts = self.sents_to_insts(sentences)
         if self.conf.static_context_emb != ContextEmb.none:
             parse_elmo_vector(self.elmo, insts)
         test_batches = self.create_batch_data(insts)
@@ -190,6 +189,199 @@ class NERPredictor:
             return predictions[0]
         else:
             return predictions
+
+    def predict_and_display(self, sents: Union[str, List[str]]):
+        sentences = [sents] if isinstance(sents, str) else sents
+        predictions = self.predict(sentences)
+
+        if isinstance(predictions[0], str):
+            predictions = [predictions]
+
+        # Get tokenized words for each sentence
+        insts = self.sents_to_insts(sentences)
+
+        for i, (inst, pred) in enumerate(zip(insts, predictions)):
+            print(f"Sentence {i + 1}: {sentences[i]}")
+            print("-" * 75)
+
+            # Use tokenized words from instances
+            words = inst.words
+
+            # Ensure we have matching lengths
+            if len(words) != len(pred):
+                print(
+                    f"Warning: Mismatch between words ({len(words)}) and predictions ({len(pred)})"
+                )
+                min_len = min(len(words), len(pred))
+                words = words[:min_len]
+                pred = pred[:min_len]
+
+            for j, (word, label) in enumerate(zip(words, pred)):
+                if label.startswith("B-"):
+                    label_prefix = "[BEGIN]"
+                    entity_type = label[2:]
+                elif label.startswith("I-"):
+                    label_prefix = "[INSIDE]"
+                    entity_type = label[2:]
+                elif label.startswith("E-"):
+                    label_prefix = "[END]"
+                    entity_type = label[2:]
+                else:
+                    label_prefix = "[OTHER]"
+                    entity_type = ""
+
+                # Format output
+                if entity_type:
+                    display_label = f"{label_prefix} {entity_type}"
+                else:
+                    display_label = f"{label_prefix} {label}"
+
+                print(f"  {j + 1:2d}. {word:20} -> {display_label}")
+
+        return predictions if len(predictions) > 1 else predictions[0]
+
+    def predict_and_display_with_entities(self, sents: Union[str, List[str]]):
+        sentences = [sents] if isinstance(sents, str) else sents
+        predictions = self.predict(sentences)
+
+        if isinstance(predictions[0], str):
+            predictions = [predictions]
+
+        # Get tokenized words for each sentence
+        insts = self.sents_to_insts(sentences)
+
+        all_entities = []
+
+        for i, (inst, pred) in enumerate(zip(insts, predictions)):
+            print(f"Sentence {i + 1}: {sentences[i]}")
+            print("-" * 75)
+
+            words = inst.words
+
+            # Ensure matching lengths
+            if len(words) != len(pred):
+                print(
+                    f"Warning: Mismatch between words ({len(words)}) and predictions ({len(pred)})"
+                )
+                min_len = min(len(words), len(pred))
+                words = words[:min_len]
+                pred = pred[:min_len]
+
+            # Display word-by-word predictions
+            for j, (word, label) in enumerate(zip(words, pred)):
+                if label.startswith("B-"):
+                    label_prefix = "[BEGIN]"
+                    entity_type = label[2:]
+                elif label.startswith("I-"):
+                    label_prefix = "[INSIDE]"
+                    entity_type = label[2:]
+                elif label.startswith("E-"):
+                    label_prefix = "[END]"
+                    entity_type = label[2:]
+                else:
+                    label_prefix = "[OTHER]"
+                    entity_type = ""
+
+                if entity_type:
+                    display_label = f"{label_prefix} {entity_type}"
+                else:
+                    display_label = f"{label_prefix} {label}"
+
+                print(f"  {j + 1:2d}. {word:20} -> {display_label}")
+
+            # Extract and display entities
+            entities = self._extract_entities(words, pred)
+            all_entities.append(entities)
+
+            if entities:
+                print("\nExtracted Entities:")
+                print("-" * 40)
+                for entity_type, entity_list in entities.items():
+                    for entity_text, start_idx, end_idx in entity_list:
+                        print(
+                            f"  {entity_type}: '{entity_text}' (position {start_idx}-{end_idx})"
+                        )
+            else:
+                print("\nNo entities found.")
+
+            print()  # Add blank line between sentences
+
+        result = {
+            "predictions": predictions if len(predictions) > 1 else predictions[0],
+            "entities": all_entities if len(all_entities) > 1 else all_entities[0],
+        }
+
+        return result
+
+    def _extract_entities(
+        self, words: List[str], labels: List[str]
+    ) -> Dict[str, List[tuple]]:
+        """
+        Extract entities from word-label pairs
+
+        Args:
+            words: List of words
+            labels: List of corresponding labels
+
+        Returns:
+            dict: Dictionary mapping entity types to list of (text, start_idx, end_idx) tuples
+        """
+        entities = {}
+        current_entity = None
+        current_words = []
+        start_idx = -1
+
+        for i, (word, label) in enumerate(zip(words, labels)):
+            if label.startswith("B-"):
+                # Save previous entity if exists
+                if current_entity and current_words:
+                    entity_text = " ".join(current_words)
+                    if current_entity not in entities:
+                        entities[current_entity] = []
+                    entities[current_entity].append((entity_text, start_idx, i - 1))
+
+                # Start new entity
+                current_entity = label[2:]
+                current_words = [word]
+                start_idx = i
+
+            elif label.startswith("I-") and current_entity == label[2:]:
+                # Continue current entity
+                current_words.append(word)
+
+            elif label.startswith("E-") and current_entity == label[2:]:
+                # End current entity
+                current_words.append(word)
+                entity_text = " ".join(current_words)
+                if current_entity not in entities:
+                    entities[current_entity] = []
+                entities[current_entity].append((entity_text, start_idx, i))
+
+                # Reset
+                current_entity = None
+                current_words = []
+                start_idx = -1
+
+            else:
+                # Save previous entity if exists and reset
+                if current_entity and current_words:
+                    entity_text = " ".join(current_words)
+                    if current_entity not in entities:
+                        entities[current_entity] = []
+                    entities[current_entity].append((entity_text, start_idx, i - 1))
+
+                current_entity = None
+                current_words = []
+                start_idx = -1
+
+        # Handle entity that extends to end of sentence
+        if current_entity and current_words:
+            entity_text = " ".join(current_words)
+            if current_entity not in entities:
+                entities[current_entity] = []
+            entities[current_entity].append((entity_text, start_idx, len(words) - 1))
+
+        return entities
 
 
 def parse_elmo_vector(

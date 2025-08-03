@@ -246,7 +246,15 @@ def train_model(
     print("Final testing.")
     model.load_state_dict(torch.load(model_path))
     model.eval()
-    evaluate_model(config, model, test_loader, "test", test_loader.dataset.insts)
+    evaluate_model(
+        config,
+        model,
+        test_loader,
+        "test",
+        test_loader.dataset.insts,
+        print_each_type_metric=True,
+    )
+    print(f"Writing results to: {res_path}")
     write_results(res_path, test_loader.dataset.insts)
 
 
@@ -256,7 +264,7 @@ def evaluate_model(
     loader: DataLoader,
     name: str,
     insts: List[Instance],
-    print_each_type_metric: bool = False,
+    print_each_type_metric: bool = True,
 ):
     ## evaluation
     p_dict, total_predict_dict, total_entity_dict = Counter(), Counter(), Counter()
@@ -308,7 +316,6 @@ def evaluate_model(
         ),
         flush=True,
     )
-
     return [precision, recall, fscore]
 
 
@@ -371,7 +378,7 @@ def main():
         word2idx=word2idx, char2idx=char2idx, elmo_vecs=test_elmo_vecs
     )
 
-    num_workers = 8
+    num_workers = 0
     conf.label_size = len(train_dataset.label2idx)
     train_dataloader = DataLoader(
         train_dataset,
