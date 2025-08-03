@@ -94,13 +94,13 @@ class TransformersNERPredictor:
     def predict_and_display(self, sents: List[List[str]], batch_size=-1):
         predictions = self.predict(sents, batch_size)
 
+        prefix_map = {"B-": "[BEGIN] ", "I-": "[INSIDE]", "E-": "[END]   "}
+
         for i, (sent, pred) in enumerate(zip(sents, predictions)):
-            # Join words to show original sentence
             sentence_text = " ".join(sent)
             print(f"Sentence {i + 1}: {sentence_text}")
             print("-" * 75)
 
-            # Ensure we have matching lengths
             if len(sent) != len(pred):
                 print(
                     f"Warning: Mismatch between words ({len(sent)}) and predictions ({len(pred)})"
@@ -110,20 +110,15 @@ class TransformersNERPredictor:
                 pred = pred[:min_len]
 
             for j, (word, label) in enumerate(zip(sent, pred)):
-                if label.startswith("B-"):
-                    label_prefix = "[BEGIN]"
-                    entity_type = label[2:]  # Remove "B-" prefix
-                elif label.startswith("I-"):
-                    label_prefix = "[INSIDE]"
-                    entity_type = label[2:]  # Remove "I-" prefix
-                elif label.startswith("E-"):
-                    label_prefix = "[END]"
-                    entity_type = label[2:]  # Remove "E-" prefix
-                else:
-                    label_prefix = "[OTHER]"
-                    entity_type = ""
+                label_prefix = "[OTHER] "
+                entity_type = ""
 
-                # Format output
+                for prefix, prefix_str in prefix_map.items():
+                    if label.startswith(prefix):
+                        label_prefix = prefix_str
+                        entity_type = label[len(prefix) :]
+                        break
+
                 if entity_type:
                     display_label = f"{label_prefix} {entity_type}"
                 else:
@@ -137,13 +132,13 @@ class TransformersNERPredictor:
         predictions = self.predict(sents, batch_size)
         all_entities = []
 
+        prefix_map = {"B-": "[BEGIN] ", "I-": "[INSIDE]", "E-": "[END]   "}
+
         for i, (sent, pred) in enumerate(zip(sents, predictions)):
-            # Join words to show original sentence
             sentence_text = " ".join(sent)
             print(f"Sentence {i + 1}: {sentence_text}")
             print("-" * 75)
 
-            # Ensure matching lengths
             if len(sent) != len(pred):
                 print(
                     f"Warning: Mismatch between words ({len(sent)}) and predictions ({len(pred)})"
@@ -152,20 +147,15 @@ class TransformersNERPredictor:
                 sent = sent[:min_len]
                 pred = pred[:min_len]
 
-            # Display word-by-word predictions
             for j, (word, label) in enumerate(zip(sent, pred)):
-                if label.startswith("B-"):
-                    label_prefix = "[BEGIN]"
-                    entity_type = label[2:]
-                elif label.startswith("I-"):
-                    label_prefix = "[INSIDE]"
-                    entity_type = label[2:]
-                elif label.startswith("E-"):
-                    label_prefix = "[END]"
-                    entity_type = label[2:]
-                else:
-                    label_prefix = "[OTHER]"
-                    entity_type = ""
+                label_prefix = "[OTHER] "
+                entity_type = ""
+
+                for prefix, prefix_label in prefix_map.items():
+                    if label.startswith(prefix):
+                        label_prefix = prefix_label
+                        entity_type = label[len(prefix) :]
+                        break
 
                 if entity_type:
                     display_label = f"{label_prefix} {entity_type}"
@@ -174,7 +164,6 @@ class TransformersNERPredictor:
 
                 print(f"  {j + 1:2d}. {word:20} -> {display_label}")
 
-            # Extract and display entities
             entities = self._extract_entities(sent, pred)
             all_entities.append(entities)
 
@@ -188,8 +177,6 @@ class TransformersNERPredictor:
                         )
             else:
                 print("\nNo entities found.")
-
-            print()  # Add blank line between sentences
 
         return {"predictions": predictions, "entities": all_entities}
 
