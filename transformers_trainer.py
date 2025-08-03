@@ -439,7 +439,7 @@ def main():
         device = torch.device(opt.device)
         assert os.path.isdir(folder_name)
         f = open(folder_name + "/config.conf", "rb")
-        saved_config = pickle.load(
+        saved_config: Config = pickle.load(
             f
         )  # we use `label2idx` from old config, but test file, test number
         f.close()
@@ -468,13 +468,14 @@ def main():
             torch.load(f"{folder_name}/lstm_crf.m", map_location=device)
         )
         model.eval()
+        saved_config.device = opt.device
         evaluate_model(
             config=saved_config,
             model=model,
             data_loader=test_dataloader,
             name="test mode",
             insts=test_dataset.insts,
-            print_each_type_metric=False,
+            print_each_type_metric=True,
         )
 
 

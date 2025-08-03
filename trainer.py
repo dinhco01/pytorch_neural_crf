@@ -43,7 +43,7 @@ def parse_arguments(parser):
     parser.add_argument("--seed", type=int, default=42, help="random seed")
     parser.add_argument("--dataset", type=str, default="conll2003_sample")
     parser.add_argument(
-        "--embedding_file",
+        "--x",
         type=str,
         default="data/glove.6B.100d.txt",
         help="we will be using random embeddings if file do not exist",
@@ -316,6 +316,7 @@ def main():
     parser = argparse.ArgumentParser(description="LSTM CRF implementation")
     opt = parse_arguments(parser)
     conf = Config(opt)
+    conf.embedding_dim = opt.embedding_dim
 
     set_seed(opt, conf.seed)
 
